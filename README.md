@@ -253,6 +253,13 @@ called mkcephconf.py lets you automatically generate hundreds or thousands of
 ceph.conf files from defined ranges of different options that can then be used
 with cbt in this way.
 
+```bash
+PYTHONPATH=<cbt root path> tools/generate_performance_report.py --archive=<archive dir> --output_directory=./main_results
+```
+
+This is how to generate the performance report, but need more effort.
+
+
 ## RECENT FEATURES
 
 * Support for [workloads](docs/Workloads.md), that is sequence of performance tests, particularly

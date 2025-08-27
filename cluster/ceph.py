@@ -345,12 +345,12 @@ class Ceph(Cluster):
     def make_mons(self):
         # Build and distribute the client keyring
         client_admin_dir = "%s/client.admin" % self.tmp_dir
-        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'rm -rf %s' % client_admin_dir).communicate()
-        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'mkdir -p %s' % client_admin_dir).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo rm -rf %s' % client_admin_dir).communicate()
+        common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo mkdir -p %s' % client_admin_dir, continue_if_error=False).communicate()
 
         keyring_fn = os.path.join(client_admin_dir, "keyring")
-        common.pdsh(settings.getnodes('head'), '%s --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
-        common.pdsh(settings.getnodes('head'), '%s --gen-key --name=client.admin --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
+        common.pdsh(settings.getnodes('head'), 'sudo %s --create-keyring --gen-key --name=mon. %s --cap mon \'allow *\'' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
+        common.pdsh(settings.getnodes('head'), 'sudo %s --gen-key --name=client.admin --cap mon \'allow *\' --cap osd \'allow *\' --cap mds \'allow *\' --cap mgr \'allow *\' %s' % (self.ceph_authtool_cmd, keyring_fn)).communicate()
         common.rscp(settings.getnodes('head'), keyring_fn, '%s.tmp' % keyring_fn).communicate()
         common.pdcp(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), '', '%s.tmp' % keyring_fn, keyring_fn).communicate()
         common.pdsh(settings.getnodes('head', 'clients', 'osds', 'mons', 'rgws', 'mgrs'), 'sudo mv %s %s.cbt.bak' % (self.client_keyring, self.client_keyring)).communicate()
@@ -802,7 +802,7 @@ class Ceph(Cluster):
             if ec_overwrites is True:
                 common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool set %s allow_ec_overwrites true' % (self.ceph_cmd, self.tmp_conf, name), continue_if_error=False).communicate()
         else:
-            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d %s' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size, yes_flag),
+            common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool create %s %d %d' % (self.ceph_cmd, self.tmp_conf, name, pg_size, pgp_size),
                         continue_if_error=False).communicate()
         if self.version_compat not in ['argonaut', 'bobcat', 'cuttlefish', 'dumpling', 'emperor', 'firefly', 'giant', 'hammer', 'infernalis', 'jewel']:
             common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool application enable %s %s' % (self.ceph_cmd, self.tmp_conf, name, application), continue_if_error=False).communicate()
@@ -887,7 +887,7 @@ class Ceph(Cluster):
             # delete the cache pool
             self.rmpool(cache_name, cache_profile)
         common.pdsh(settings.getnodes('head'), 'sudo %s -c %s osd pool delete %s %s --yes-i-really-really-mean-it' % (self.ceph_cmd, self.tmp_conf, name, name),
-                    continue_if_error=False).communicate()
+                    continue_if_error=True).communicate()
 
     def mkimage(self, name, size, pool, data_pool, order):
         dp_option = ''

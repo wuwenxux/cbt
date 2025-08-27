@@ -27,6 +27,8 @@ class Benchmark(object):
         self.run_dir = os.path.join(settings.cluster.get('tmp_dir'),
                                     '{:0>8}'.format(config.get('iteration')),
                                     self.getclass())
+        if not os.path.exists(self.archive_dir):
+            os.makedirs(self.archive_dir)
         self.osd_ra = config.get('osd_ra', '0')
         self.cmd_path = ''
         self.valgrind = config.get('valgrind', None)

@@ -201,6 +201,7 @@ def rpdcp(nodes, flags, remotefile, localdir):
         args = [rpdcp_cmd, '-f', '10', '-R', 'ssh', '-w', nodes]
         if flags:
             args += [flags]
+        os.makedirs(localdir, exist_ok=True)
         return CheckedPopen(args + [remotefile, localdir],
                             continue_if_error=False, env_vars=env)
 

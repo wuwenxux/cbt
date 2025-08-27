@@ -1,0 +1,17 @@
+[global]
+fsid = d113905d-3a80-4433-94d7-a356c46140cf
+mon_initial_members = xjin-virtual-machine
+mon_allow_pool_delete = true
+# 以下IP可改为暴露真实值，测试为了网络环境的稳定性选择只与本机交流
+mon host = 127.0.0.1
+public network = 127.0.0.0/8
+cluster network = 127.0.0.0/8
+# 以下权限配置为了测试排障方便选择无控制
+auth cluster required = none
+auth service required = none
+auth client required = none
+# 以下OSD配置强制数据单备份。Ceph默认用途是多备份保护数据，而测试集群结构很小
+osd journal size = 1
+#osd pool default size = 1
+#osd pool default min size = 1
+osd crush chooseleaf type = 0
