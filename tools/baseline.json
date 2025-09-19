@@ -1211,8 +1211,8 @@
                 "osds_per_node": 1,
                 "pool_profiles": {
                     "rgw": {
-                        "pg_size": 128,
-                        "pgp_size": 128,
+                        "pg_size": 8,
+                        "pgp_size": 8,
                         "replication": 1
                     }
                 },

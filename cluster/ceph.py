@@ -94,6 +94,7 @@ class Ceph(Cluster):
     def _set_default_attributes(self, config):
         """ Factorised method to reuse for mock init and unit tests"""
         self.health_wait = config.get('health_wait', 5)
+        self.health_check = config.get('health_check', True)
         self.ceph_osd_cmd = config.get('ceph-osd_cmd', '/usr/bin/ceph-osd')
         self.ceph_mon_cmd = config.get('ceph-mon_cmd', '/usr/bin/ceph-mon')
         self.ceph_run_cmd = config.get('ceph-run_cmd', '/usr/bin/ceph-run')
@@ -554,6 +555,11 @@ class Ceph(Cluster):
         common.pdsh(settings.getnodes('head'), "ceph balancer off").communicate()
 
     def check_health(self, check_list=None, logfile=None, recstatsfile=None):
+        # Skip health check if disabled
+        if not self.health_check:
+            logger.info("Health check disabled, skipping...")
+            return 0
+            
         # Wait for a defined amount of time in case ceph health is delayed
         time.sleep(self.health_wait)
         logline = ""

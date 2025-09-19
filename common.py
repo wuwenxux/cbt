@@ -266,7 +266,7 @@ def sync_files(remote_dir, local_dir):
 
     if 'user' in settings.cluster:
         pdsh(nodes,
-             'sudo chown -R {0}.{0} {1}'.format(settings.cluster['user'], remote_dir),
+             'sudo chown -R {0}:{0} {1}'.format(settings.cluster['user'], remote_dir),
              continue_if_error=False).communicate()
     rpdcp(nodes, '-r', remote_dir, local_dir).communicate()
 

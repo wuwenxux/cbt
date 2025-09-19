@@ -7,6 +7,7 @@ import logging
 import pathlib
 import re
 import json
+import csv
 
 from .benchmark import Benchmark, DataAnalyzer
 
@@ -232,15 +233,40 @@ class Radosbench(Benchmark):
                 found = 0
                 out_file = '%s/output.%s.%s' % (out_dir, i, host)
                 json_out_file = '%s/json_output.%s.%s' % (out_dir, i, host)
-                with open(out_file) as fd:
-                    for line in fd.readlines():
-                        if found == 0:
-                            if "Total time run" in line:
-                                found = 1
-                        if found == 1:
-                            line = line.strip()
-                            key, val = line.split(":")
-                            result[key.strip()] = val.strip()
+                
+                # Check if local file exists, if not try to get from remote
+                if not os.path.exists(out_file):
+                    logger.warning(f"Local output file {out_file} not found, attempting to retrieve from remote")
+                    # Try to get the file from remote node
+                    remote_file = f'/tmp/cbt/00000000/Radosbench/osd_ra-00000000/op_size-00004096/concurrent_ops-00000001/write/output.{i}'
+                    try:
+                        # Use scp to get the file
+                        import subprocess
+                        cmd = ['scp', f'{client}:{remote_file}', out_file]
+                        subprocess.run(cmd, check=True, capture_output=True)
+                        logger.info(f"Successfully retrieved {out_file} from remote")
+                    except subprocess.CalledProcessError as e:
+                        logger.error(f"Failed to retrieve {out_file} from remote: {e}")
+                        # Create empty result if file cannot be retrieved
+                        with open(json_out_file, 'w') as json_fd:
+                            json.dump({}, json_fd)
+                        continue
+                
+                try:
+                    with open(out_file) as fd:
+                        for line in fd.readlines():
+                            if found == 0:
+                                if "Total time run" in line:
+                                    found = 1
+                            if found == 1:
+                                line = line.strip()
+                                if ":" in line:
+                                    key, val = line.split(":", 1)
+                                    result[key.strip()] = val.strip()
+                except Exception as e:
+                    logger.error(f"Error reading {out_file}: {e}")
+                    result = {}
+                
                 with open(json_out_file, 'w') as json_fd:
                     json.dump(result, json_fd)
 
@@ -288,3 +314,49 @@ class RadosBenchAnalyzer(DataAnalyzer):
 
     def get_iops_stddev(self):
         return self.radosbench_json_output["Stddev IOPS"]
+
+    def export_to_csv(self, csv_filename=None):
+        """Export test results to CSV format"""
+        if csv_filename is None:
+            csv_filename = os.path.join(self.out_dir, f'results_{self.proc}_{self.host}.csv')
+        
+        # Prepare data for CSV
+        csv_data = []
+        
+        # Basic test information
+        csv_data.append(['Test Type', 'RADOS Bench'])
+        csv_data.append(['Host', self.host])
+        csv_data.append(['Process ID', self.proc])
+        csv_data.append(['Run Directory', self.run_dir])
+        csv_data.append(['', ''])  # Empty row for separation
+        
+        # Performance metrics
+        csv_data.append(['Metric', 'Value', 'Unit'])
+        csv_data.append(['Total Operations', self.get_total_ops(), 'ops'])
+        csv_data.append(['Average IOPS', self.get_iops_avg(), 'IOPS'])
+        csv_data.append(['IOPS Std Dev', self.get_iops_stddev(), 'IOPS'])
+        csv_data.append(['Average Latency', self.get_latency_avg(), 'ms'])
+        csv_data.append(['Bandwidth', self.get_bandwidth(), 'MB/s'])
+        
+        # CPU metrics (if available)
+        cpu_cycles = self.get_cpu_cycles()
+        if cpu_cycles is not None:
+            csv_data.append(['CPU Cycles', cpu_cycles, 'cycles'])
+            cpu_per_op = self.get_cpu_cycles_per_op()
+            if cpu_per_op is not None:
+                csv_data.append(['CPU Cycles per Op', f"{cpu_per_op:.2f}", 'cycles/op'])
+        
+        csv_data.append(['', ''])  # Empty row for separation
+        
+        # Raw JSON data
+        csv_data.append(['Raw JSON Data', '', ''])
+        for key, value in self.radosbench_json_output.items():
+            csv_data.append([key, str(value), ''])
+        
+        # Write to CSV file
+        with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerows(csv_data)
+        
+        logger.info(f"Results exported to CSV: {csv_filename}")
+        return csv_filename
