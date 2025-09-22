@@ -1,0 +1,49 @@
+cluster:
+  user: 'ceph'
+  head: "10.102.11.234"
+  clients: ["10.102.11.234"]  # 只使用一个客户端节点
+  mons:
+    10.102.11.234:
+      a: "10.102.11.234:6789"
+    10.102.11.235:
+      b: "10.102.11.235:6789"
+    10.102.11.236:
+      c: "10.102.11.236:6789"
+  
+  use_existing: True
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+  
+  # SSH配置 - 跳过主机密钥检查
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  
+  # 基本命令路径
+  ceph_cmd: '/usr/bin/ceph'
+  rados_cmd: '/usr/bin/rados'
+  
+  # 使用现有存储池
+  pool_profiles:
+    rados-bench-cbt:
+      pg_size: 64
+      pgp_size: 64
+      replication: 3
+      create: False  # 不创建新存储池
+
+benchmarks:
+  # 简化的RADOS测试
+  radosbench:
+    op_size: [4096]
+    write_only: True
+    time: 300  # 30秒测试
+    concurrent_ops: [1]
+    concurrent_procs: 1
+    use_existing: True
+    pool_profile: rados-bench-cbt
+
+
+
+
+
+
+

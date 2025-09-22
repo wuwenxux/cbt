@@ -1,0 +1,57 @@
+cluster:
+  user: 'ceph'  # 临时使用root用户
+  head: "10.102.11.234"  # 主管理节点
+  clients: ["10.102.11.234"]  # 使用一个节点作为客户端
+  # 注意：没有OSD节点，只有Monitor节点
+  mons:
+    10.102.11.234:
+      a: "10.102.11.234:6789"
+    10.102.11.235:
+      b: "10.102.11.235:6789"
+    10.102.11.236:
+      c: "10.102.11.236:6789"
+  
+  # 基本配置
+  use_existing: True  # 使用现有集群
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+  # SSH配置
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  
+  # Ceph命令路径
+  ceph_cmd: '/usr/bin/ceph'
+  rados_cmd: '/usr/bin/rados'
+  rbd_cmd: '/usr/bin/rbd'
+  ceph-mon_cmd: '/usr/bin/ceph-mon'
+  ceph-mgr_cmd: '/usr/bin/ceph-mgr'
+  ceph-authtool_cmd: '/usr/bin/ceph-authtool'
+  
+  # 存储池配置 - 使用现有存储池
+  pool_profiles:
+    rados-bench-cbt:
+      pg_size: 64  # 匹配当前集群的PG数量
+      pgp_size: 64
+      replication: 3  # 3副本，匹配当前配置
+      create: False  # 不创建新存储池，使用现有的
+
+benchmarks:
+  # 只进行RADOS基准测试，因为RBD需要OSD支持
+  radosbench:
+    op_size: [1048576, 4096]  # 1MB, 4KB - 较小的操作大小
+    write_only: False
+    time: 60  # 1分钟测试
+    concurrent_ops: [8, 16]  # 较少的并发操作
+    concurrent_procs: 1
+    use_existing: True
+    pool_profile: rados-bench-cbt
+
+# 注意：由于没有OSD节点，以下测试无法运行：
+# - librbdfio (需要RBD支持，RBD需要OSD)
+# - 纠删码测试 (需要OSD支持)
+# - 大部分存储相关的性能测试
+
+# 可以运行的测试：
+# - RADOS基准测试 (测试Monitor和网络性能)
+# - 集群状态检查
+# - 基本的Ceph命令测试
