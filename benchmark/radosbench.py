@@ -8,6 +8,7 @@ import pathlib
 import re
 import json
 import csv
+import glob
 
 from .benchmark import Benchmark, DataAnalyzer
 
@@ -234,26 +235,55 @@ class Radosbench(Benchmark):
                 out_file = '%s/output.%s.%s' % (out_dir, i, host)
                 json_out_file = '%s/json_output.%s.%s' % (out_dir, i, host)
                 
-                # Check if local file exists, if not try to get from remote
-                if not os.path.exists(out_file):
-                    logger.warning(f"Local output file {out_file} not found, attempting to retrieve from remote")
-                    # Try to get the file from remote node
-                    remote_file = f'/tmp/cbt/00000000/Radosbench/osd_ra-00000000/op_size-00004096/concurrent_ops-00000001/write/output.{i}'
+                # Prefer the expected pdcp/rpdcp naming scheme, but be flexible:
+                # depending on the pdsh/pdcp implementation and node naming,
+                # output files may be suffixed differently (or not at all).
+                #
+                # Try a few common candidates before falling back to scp.
+                candidates = [
+                    out_file,  # output.<proc>.<host>
+                    '%s/output.%s' % (out_dir, i),  # output.<proc>
+                ]
+                # Any output.<proc>* (catch-all for unexpected suffixes)
+                candidates.extend(sorted(glob.glob('%s/output.%s*' % (out_dir, i))))
+
+                selected = next((p for p in candidates if os.path.exists(p) and os.path.getsize(p) > 0), None)
+                if selected is None:
+                    logger.warning(
+                        "No local output.%s found under %s, attempting to retrieve from remote via scp",
+                        i, out_dir
+                    )
+                    # Derive the remote path deterministically from this benchmark's parameters.
+                    # The remote run dir mirrors the local run_dir structure.
+                    run_name = os.path.basename(out_dir.rstrip('/'))  # write/prefill/seq/rand
+                    iteration = int(self.config.get('iteration', 0))
+                    remote_run_dir = os.path.join(
+                        settings.cluster.get('tmp_dir', '/tmp/cbt'),
+                        '{:0>8}'.format(iteration),
+                        'Radosbench',
+                        'osd_ra-{:0>8}'.format(int(self.osd_ra)),
+                        'op_size-{:0>8}'.format(int(self.op_size)),
+                        'concurrent_ops-{:0>8}'.format(int(self.concurrent_ops)),
+                        run_name,
+                    )
+                    remote_file = os.path.join(remote_run_dir, f'output.{i}')
                     try:
-                        # Use scp to get the file
                         import subprocess
                         cmd = ['scp', f'{client}:{remote_file}', out_file]
                         subprocess.run(cmd, check=True, capture_output=True)
-                        logger.info(f"Successfully retrieved {out_file} from remote")
-                    except subprocess.CalledProcessError as e:
-                        logger.error(f"Failed to retrieve {out_file} from remote: {e}")
+                        selected = out_file
+                        logger.info("Successfully retrieved %s from %s", out_file, remote_file)
+                    except Exception as e:
+                        logger.error("Failed to retrieve %s from remote (%s): %s", out_file, remote_file, e)
                         # Create empty result if file cannot be retrieved
                         with open(json_out_file, 'w') as json_fd:
                             json.dump({}, json_fd)
                         continue
+                elif selected != out_file:
+                    logger.info("Using output file %s for host %s proc %s", selected, host, i)
                 
                 try:
-                    with open(out_file) as fd:
+                    with open(selected) as fd:
                         for line in fd.readlines():
                             if found == 0:
                                 if "Total time run" in line:
@@ -264,7 +294,7 @@ class Radosbench(Benchmark):
                                     key, val = line.split(":", 1)
                                     result[key.strip()] = val.strip()
                 except Exception as e:
-                    logger.error(f"Error reading {out_file}: {e}")
+                    logger.error("Error reading %s: %s", selected, e)
                     result = {}
                 
                 with open(json_out_file, 'w') as json_fd:
