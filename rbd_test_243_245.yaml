@@ -1,0 +1,72 @@
+# CBT RBD 测试配置
+# Ceph 集群节点: 10.103.11.243, 244, 245
+
+common:
+  pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+cluster:
+  user: 'ceph'
+  head: "10.103.11.243"
+  clients: ["10.103.11.243"]
+  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  mons:
+    10.103.11.243:
+      a: "10.103.11.243:6789"
+    10.103.11.244:
+      b: "10.103.11.244:6789"
+    10.103.11.245:
+      c: "10.103.11.245:6789"
+  
+  use_existing: True
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+  
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  
+  # Ceph 命令路径
+  rbd_cmd: '/usr/bin/rbd'
+  ceph_cmd: '/usr/bin/ceph'
+  rados_cmd: '/usr/bin/rados'
+  
+  # 存储池配置
+  pool_profiles:
+    rbd:
+      pg_size: 128
+      pgp_size: 128
+      replication: 3
+
+benchmarks:
+  librbdfio:
+    # FIO命令路径
+    cmd_path: '/usr/bin/fio'
+    
+    # 存储池配置
+    pool_profile: 'rbd'
+    poolname: 'rbd_test'
+    
+    # 卷配置
+    vol_size: 10240              # 卷大小（MB）= 10GB
+    volumes_per_client: 1        # 每个客户端的卷数
+    use_existing_volumes: False  # 是否使用现有卷
+    
+    # 测试时长
+    time: 120                    # 测试时长（秒）= 2分钟
+    time_based: True             # 基于时间运行
+    ramp: 10                     # 预热时间（秒）
+    
+    # IO配置 - 常见的RBD测试场景
+    mode: ['randread', 'randwrite', 'read', 'write']  # 测试模式
+    iodepth: [1, 8, 32]          # IO深度
+    numjobs: [1, 4]              # 并发任务数
+    op_size: [4096, 131072, 1048576]  # IO大小: 4K, 128K, 1M（字节）
+    
+    # 进程配置
+    procs_per_client: 1          # 每个客户端的进程数
+    
+    # 输出配置
+    fio_out_format: 'json,normal'  # 输出格式
+    log_avg_msec: 100            # 日志平均时间间隔（毫秒）
+    log_iops: True               # 记录IOPS
+    log_bw: True                 # 记录带宽
+    log_lat: True                # 记录延迟
