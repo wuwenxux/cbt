@@ -29,32 +29,62 @@ else
     PYTHON_CMD="python3"
 fi
 
+# 检查测试是否已完成
+check_test_done() {
+    local test_name=$1
+    local latest_result=$(ls -td results/${test_name}_* 2>/dev/null | head -1 || true)
+    if [ -n "$latest_result" ] && [ -d "$latest_result/results" ]; then
+        # 提取测试时间
+        local test_time=$(basename "$latest_result" | sed "s/${test_name}_//")
+        local year=${test_time:0:4}
+        local month=${test_time:4:2}
+        local day=${test_time:6:2}
+        local hour=${test_time:9:2}
+        local min=${test_time:11:2}
+        echo -e "${GREEN}✓${NC} (${month}-${day} ${hour}:${min})"
+        return 0
+    fi
+    echo ""
+    return 0
+}
+
+# 检查各项测试状态
+mark_librbd=$(check_test_done "rbd_librbd")
+mark_krbd=$(check_test_done "rbd_krbd")
+mark_nbd=$(check_test_done "rbd_nbd")
+mark_cephfs_kernel=$(check_test_done "cephfs_kernel")
+mark_cephfs_fuse=$(check_test_done "cephfs_fuse")
+mark_rgw=$(check_test_done "rgw_s3")
+mark_rados=$(check_test_done "rados_bench")
+
 # 显示测试菜单
+echo ""
 echo -e "${YELLOW}请选择要运行的测试类型:${NC}"
 echo ""
 echo -e "${CYAN}━━━ RBD 块存储测试 ━━━${NC}"
-echo "  1) RBD librbd    - 直接库访问 (已测试 ✓)"
-echo "  2) RBD KRBD      - 内核 RBD 模块"
-echo "  3) RBD NBD       - Network Block Device"
+echo -e "  1) RBD librbd    - 直接库访问 $mark_librbd"
+echo -e "  2) RBD KRBD      - 内核 RBD 模块 $mark_krbd"
+echo -e "  3) RBD NBD       - Network Block Device $mark_nbd"
 echo "  4) RBD 全部      - 运行所有 RBD 测试"
 echo ""
 echo -e "${CYAN}━━━ CephFS 文件系统测试 ━━━${NC}"
-echo "  5) CephFS Kernel - 内核客户端"
-echo "  6) CephFS FUSE   - 用户态 FUSE"
+echo -e "  5) CephFS Kernel - 内核客户端 $mark_cephfs_kernel"
+echo -e "  6) CephFS FUSE   - 用户态 FUSE $mark_cephfs_fuse"
 echo "  7) CephFS 全部   - 运行所有 CephFS 测试"
 echo ""
 echo -e "${CYAN}━━━ 对象存储和 RADOS 测试 ━━━${NC}"
-echo "  8) RGW S3        - S3 对象存储"
-echo "  9) RADOS Bench   - RADOS 直接访问"
+echo -e "  8) RGW S3        - S3 对象存储 $mark_rgw"
+echo -e "  9) RADOS + perf  - RADOS with CPU cycles 统计 $mark_rados"
 echo ""
 echo -e "${CYAN}━━━ 综合测试 ━━━${NC}"
 echo " 10) 全部测试      - 运行所有可用测试"
 echo " 11) 快速对比      - P0 测试 (librbd, KRBD, CephFS-Kernel)"
+echo " 12) 完整 perf    - 所有测试 + CPU 性能统计"
 echo ""
 echo "  0) 退出"
 echo ""
 
-read -p "请选择 [0-11]: " choice
+read -p "请选择 [0-12]: " choice
 
 # 时间戳
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -98,12 +128,13 @@ case $choice in
         ;;
     3)
         echo -e "${YELLOW}提示: NBD 需要先通过 rbd-nbd 映射设备${NC}"
-        echo -e "${RED}NBD 测试配置尚未完成${NC}"
+        run_test "rbd_nbd" "rbd_nbd_243_245_quick.yaml" "RBD NBD 网络块设备"
         ;;
     4)
         echo -e "${BLUE}运行所有 RBD 测试...${NC}"
         run_test "rbd_librbd" "rbd_test_243_245_quick.yaml" "RBD librbd"
         run_test "rbd_krbd" "rbd_krbd_243_245_quick.yaml" "RBD KRBD"
+        run_test "rbd_nbd" "rbd_nbd_243_245_quick.yaml" "RBD NBD"
         ;;
     5)
         echo -e "${YELLOW}提示: 需要先配置 CephFS 和 MDS${NC}"
@@ -123,7 +154,8 @@ case $choice in
         run_test "rgw_s3" "rgw_s3_243_245_quick.yaml" "RGW S3 对象存储"
         ;;
     9)
-        run_test "rados_bench" "rados_bench_243_245_quick.yaml" "RADOS 直接访问"
+        echo -e "${YELLOW}提示: 此测试将收集 CPU cycles & instructions 数据${NC}"
+        run_test "rados_bench" "rados_bench_243_245_quick.yaml" "RADOS + perf 统计"
         ;;
     10)
         echo -e "${BLUE}运行全部测试...${NC}"
@@ -132,10 +164,11 @@ case $choice in
         if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
             run_test "rbd_librbd" "rbd_test_243_245_quick.yaml" "RBD librbd"
             run_test "rbd_krbd" "rbd_krbd_243_245_quick.yaml" "RBD KRBD"
+            run_test "rbd_nbd" "rbd_nbd_243_245_quick.yaml" "RBD NBD"
             run_test "cephfs_kernel" "cephfs_kernel_243_245_quick.yaml" "CephFS Kernel"
             run_test "cephfs_fuse" "cephfs_fuse_243_245_quick.yaml" "CephFS FUSE"
-            run_test "rados_bench" "rados_bench_243_245_quick.yaml" "RADOS Bench"
             run_test "rgw_s3" "rgw_s3_243_245_quick.yaml" "RGW S3"
+            run_test "rados_bench" "rados_bench_243_245_quick.yaml" "RADOS Bench + perf"
         fi
         ;;
     11)
@@ -143,6 +176,23 @@ case $choice in
         run_test "rbd_librbd" "rbd_test_243_245_quick.yaml" "RBD librbd"
         run_test "rbd_krbd" "rbd_krbd_243_245_quick.yaml" "RBD KRBD"
         run_test "cephfs_kernel" "cephfs_kernel_243_245_quick.yaml" "CephFS Kernel"
+        ;;
+    12)
+        echo -e "${BLUE}运行完整性能测试（包含 perf 统计）...${NC}"
+        echo -e "${YELLOW}这将花费较长时间（约 40-70 分钟）${NC}"
+        read -p "确认继续? (y/n): " confirm
+        if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+            run_test "rbd_librbd" "rbd_test_243_245_quick.yaml" "RBD librbd"
+            run_test "rbd_krbd" "rbd_krbd_243_245_quick.yaml" "RBD KRBD"
+            run_test "rbd_nbd" "rbd_nbd_243_245_quick.yaml" "RBD NBD"
+            run_test "cephfs_fuse" "cephfs_fuse_243_245_quick.yaml" "CephFS FUSE"
+            run_test "rados_bench" "rados_bench_243_245_quick.yaml" "RADOS Bench + perf"
+            
+            echo -e "\n${CYAN}生成性能报告...${NC}"
+            if [ -f "./extract_perf_metrics.sh" ]; then
+                ./extract_perf_metrics.sh
+            fi
+        fi
         ;;
     0)
         echo -e "${YELLOW}退出${NC}"

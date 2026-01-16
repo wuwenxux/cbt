@@ -1,6 +1,6 @@
-# CBT RADOS Bench 快速测试配置
+# CBT RBD NBD 快速测试配置
 # Ceph 集群节点: 10.103.11.243, 244, 245
-# 访问方式: RADOS 直接访问 (最底层)
+# 访问方式: Network Block Device (rbd-nbd)
 
 common:
   pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
@@ -26,12 +26,13 @@ cluster:
   ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
   
   # Ceph 命令路径
-  rados_cmd: '/usr/bin/rados'
+  rbd_cmd: '/usr/bin/rbd'
   ceph_cmd: '/usr/bin/ceph'
+  rados_cmd: '/usr/bin/rados'
   
   # 存储池配置（适合小容量 OSD）
   pool_profiles:
-    rados_test:
+    rbd:
       pg_size: 16
       pgp_size: 16
       replication: 3
@@ -42,22 +43,36 @@ monitoring_profiles:
     nodes: ['clients']
     args: 'stat -e cycles,instructions,cache-references,cache-misses,branch-instructions,branch-misses -a -o {perf_dir}/perf_stat.$$ sleep 999999'
 
+# 客户端端点配置 - 使用 RBD NBD
+client_endpoints:
+  rbd_nbd_test:
+    driver: 'rbd-nbd'              # 使用 rbd-nbd 驱动
+    endpoints_per_client: 1        # 每个客户端1个端点
+    endpoint_size: 1048576         # 端点大小（KB）= 1 GB
+    pool_profile: 'rbd'            # 使用上面定义的存储池配置
+
 benchmarks:
-  radosbench:
-    # 存储池配置
-    pool_profile: 'rados_test'
+  fio:
+    # 引用客户端端点配置
+    client_endpoints: 'rbd_nbd_test'
     
-    # RADOS bench 参数
-    op_size: [4194304, 1048576, 4096]  # 4MB, 1MB, 4KB
-    time: 60                            # 测试时长（秒）
-    concurrent_ops: [16, 32, 64]        # 并发操作数
-    concurrent_procs: 1                 # 并发进程数
+    cmd_path: '/usr/bin/fio'
     
-    # 测试模式
-    write_only: False                   # False 表示先写后读
+    # 测试时长
+    time: 60
+    time_based: True
+    ramp: 5
     
-    # 使用现有存储池
-    use_existing: True
+    # IO配置 - 快速测试
+    mode: ['randwrite']
+    op_size: [4096]                # 4K
+    iodepth: [32]
+    procs_per_endpoint: [1]
+    numjobs: [4]
     
-    # 清理选项
-    cleanup: True                       # 测试后清理数据
+    # 输出配置
+    fio_out_format: 'json,normal'
+    log_avg_msec: 100
+    log_iops: True
+    log_bw: True
+    log_lat: True

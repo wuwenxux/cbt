@@ -7,7 +7,7 @@ common:
 cluster:
   user: 'ceph'
   head: "10.103.11.243"
-  clients: ["10.103.11.243"]
+  clients: ["10.103.11.249"]
   osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
   mons:
     10.103.11.243:
@@ -35,6 +35,12 @@ cluster:
       pg_size: 16
       pgp_size: 16
       replication: 3
+
+# 性能监控配置 - 收集 CPU cycles & instructions
+monitoring_profiles:
+  perf:
+    nodes: ['clients']
+    args: 'stat -e cycles,instructions,cache-references,cache-misses,branch-instructions,branch-misses -a -o {perf_dir}/perf_stat.$$ sleep 999999'
 
 benchmarks:
   librbdfio:
