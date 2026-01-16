@@ -69,10 +69,10 @@ benchmarks:
     
     # 测试时长
     time: 60
-    time_based: True
+    time_based: False            # 使用大小限制而非时间限制
     
-    # 文件大小
-    size: 262144                 # 文件大小（KB）= 256 MB
+    # 文件大小（限制不超过 10GB）
+    size: 10485760               # 文件大小（KB）= 10 GB
     norandommap: True
     
     # IO配置 - 简化测试

@@ -49,7 +49,7 @@ benchmarks:
     
     # 存储池配置
     pool_profile: 'rbd'
-    poolname: 'rbd_test'
+    poolname: 'rbd_test_pool'
     
     # RBD 映射配置
     # KRBD 会将 RBD image 映射为 /dev/rbdX 设备
@@ -58,8 +58,8 @@ benchmarks:
     # 卷配置
     vol_size: 1024               # 卷大小（MB）= 1GB
     volumes_per_client: 1        # 每个客户端的卷数
-    use_existing_volumes: True   # 使用已创建的卷
-    rbdname: 'cbt-librbdfio-node1-0'  # RBD卷名称
+    use_existing_volumes: False  # 自动创建新卷
+    # rbdname 将由CBT自动生成
     
     # 测试时长
     time: 60                     # 测试时长（秒）= 1分钟

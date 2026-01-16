@@ -29,6 +29,12 @@ class CephClientEndpoints(ClientEndpoints):
         self.order = config.get('order', 22)
         self.disabled_features = config.get('disabled_features', None)
 
+        # 对于 CephFS，如果 use_existing=True 且配置了 fs，使用现有文件系统名称
+        if settings.cluster.get('use_existing', False):
+            fs_name = settings.cluster.get('fs')
+            if fs_name:
+                self.name = fs_name
+
         # get the list of mons
         self.mon_addrs = []
         mon_hosts = self.cluster.get_mon_hosts()
@@ -47,6 +53,11 @@ class CephClientEndpoints(ClientEndpoints):
         return '%s/%s/%s' % (self.mnt_dir, self.name, ep_num)
 
     def create_fs(self):
+        # 如果 use_existing=True 且配置了 fs，不创建新文件系统
+        if settings.cluster.get('use_existing', False) and settings.cluster.get('fs'):
+            logger.info('使用现有文件系统: %s，跳过创建步骤', self.name)
+            return
+        
         self.pool = self.name
         self.data_pool = self.name
         self.cluster.rmpool(self.pool, self.pool_profile)

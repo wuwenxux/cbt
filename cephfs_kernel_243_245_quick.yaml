@@ -28,6 +28,12 @@ cluster:
   
   ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
   
+  # 使用 mount.ceph 替代 ceph.mount（node4 无 /usr/sbin/ceph.mount）
+  mount_cmd: '/sbin/mount.ceph'
+  
+  # 内核 CephFS 挂载命令（node4 上没有 /usr/sbin/ceph.mount）
+  mount_cmd: '/usr/sbin/mount.ceph'
+  
   # CephFS 配置 - 使用现有文件系统
   fs: 'cephfs'                   # 文件系统名称（匹配现有文件系统）
   
@@ -67,10 +73,10 @@ benchmarks:
     
     # 测试时长
     time: 60                     # 测试时长（秒）
-    time_based: True             # 基于时间运行
+    time_based: False            # 使用大小限制而非时间限制
     
-    # 文件大小
-    size: 262144                 # 文件大小（KB）= 256 MB
+    # 文件大小（限制不超过 10GB）
+    size: 10485760               # 文件大小（KB）= 10 GB
     norandommap: True            # 不使用随机映射
     
     # IO配置 - 简化测试
