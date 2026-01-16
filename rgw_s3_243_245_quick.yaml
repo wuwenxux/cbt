@@ -1,0 +1,75 @@
+# CBT RGW S3 快速测试配置
+# Ceph 集群节点: 10.103.11.243, 244, 245
+# 访问方式: S3 API (对象存储)
+
+common:
+  pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+cluster:
+  user: 'ceph'
+  head: "10.103.11.243"
+  clients: ["10.103.11.243"]
+  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  mons:
+    10.103.11.243:
+      a: "10.103.11.243:6789"
+    10.103.11.244:
+      b: "10.103.11.244:6789"
+    10.103.11.245:
+      c: "10.103.11.245:6789"
+  
+  # RGW 配置
+  rgws: ["10.103.11.243"]          # RGW 服务节点
+  
+  use_existing: True
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+  
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  
+  # RGW 命令路径
+  radosgw_cmd: '/usr/bin/radosgw'
+  radosgw_admin_cmd: '/usr/bin/radosgw-admin'
+  
+  # 存储池配置（适合小容量 OSD）
+  pool_profiles:
+    rgw_data:
+      pg_size: 16
+      pgp_size: 16
+      replication: 3
+
+benchmarks:
+  hsbench:
+    # HSBench - S3 性能测试工具
+    hsbench_cmd: '/usr/local/bin/hsbench'  # 需要安装 hsbench
+    
+    # S3 端点配置
+    endpoint: 'http://10.103.11.243:7480'  # RGW S3 端点
+    
+    # S3 认证
+    # 需要提前创建 S3 用户:
+    # radosgw-admin user create --uid=testuser --display-name="Test User"
+    access_key: 'YOUR_ACCESS_KEY'          # 替换为实际的 access key
+    secret_key: 'YOUR_SECRET_KEY'          # 替换为实际的 secret key
+    
+    # 测试参数
+    bucket: 'cbt-test-bucket'
+    duration: 60                            # 测试时长（秒）
+    threads: [1, 4, 8]                      # 并发线程数
+    object_size: ['4K', '128K', '1M']       # 对象大小
+    
+    # 测试模式
+    mode: 'mixed'                           # put, get, mixed
+    
+    # 操作配置
+    num_objects: 1000                       # 对象数量
+    cleanup: True                           # 测试后清理
+
+  # 备选: COSBench 配置
+  # cosbench:
+  #   cosbench_cmd: '/path/to/cosbench'
+  #   workload_file: 'workloads/s3-test.xml'
+  #   endpoint: 'http://10.103.11.243:7480'
+  #   access_key: 'YOUR_ACCESS_KEY'
+  #   secret_key: 'YOUR_SECRET_KEY'

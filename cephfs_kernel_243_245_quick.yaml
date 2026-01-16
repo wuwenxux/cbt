@@ -1,0 +1,77 @@
+# CBT CephFS Kernel 快速测试配置
+# Ceph 集群节点: 10.103.11.243, 244, 245
+# 访问方式: Kernel CephFS Client (mount -t ceph)
+
+common:
+  pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+cluster:
+  user: 'ceph'
+  head: "10.103.11.243"
+  clients: ["10.103.11.243"]
+  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  mons:
+    10.103.11.243:
+      a: "10.103.11.243:6789"
+    10.103.11.244:
+      b: "10.103.11.244:6789"
+    10.103.11.245:
+      c: "10.103.11.245:6789"
+  
+  # MDS 配置 (Metadata Server - CephFS 必需)
+  mdss: ["10.103.11.243"]
+  
+  use_existing: True
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+  
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  
+  # CephFS 配置 - 使用现有文件系统
+  fs: 'cephfs'                   # 文件系统名称（匹配现有文件系统）
+  
+  # 存储池配置（极小 PG 数量以适应已有池）
+  pool_profiles:
+    cephfs_repl:
+      pg_size: 8
+      pgp_size: 8
+      replication: 3
+  
+  # CephFS 存储池映射
+  cephfs_pools:
+    cephfs_data: cephfs_repl
+    cephfs_metadata: cephfs_repl
+
+# 客户端端点配置
+client_endpoints:
+  cephfs:                        # 使用现有文件系统的名称
+    driver: 'cephfs-kernel'      # 使用内核 CephFS 驱动
+    endpoints_per_client: 1      # 每个客户端1个端点
+    endpoint_size: 524288        # 端点大小（KB）= 512 MB
+    pool_profile: 'cephfs_repl'  # 使用上面定义的存储池配置
+
+benchmarks:
+  fio:
+    # 引用客户端端点配置（使用现有文件系统）
+    client_endpoints: 'cephfs'
+    
+    # FIO 命令路径
+    cmd_path: '/usr/bin/fio'
+    
+    # 测试时长
+    time: 60                     # 测试时长（秒）
+    time_based: True             # 基于时间运行
+    
+    # 文件大小
+    size: 262144                 # 文件大小（KB）= 256 MB
+    norandommap: True            # 不使用随机映射
+    
+    # IO配置 - 简化测试
+    mode: ['randwrite']          # 只测随机写
+    op_size: [4096]              # IO大小: 4K
+    procs_per_endpoint: [1]      # 每个端点的进程数
+    iodepth: [4]                 # IO深度
+    
+    # 输出配置
+    log_avg_msec: 100

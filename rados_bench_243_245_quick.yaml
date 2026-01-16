@@ -1,0 +1,57 @@
+# CBT RADOS Bench 快速测试配置
+# Ceph 集群节点: 10.103.11.243, 244, 245
+# 访问方式: RADOS 直接访问 (最底层)
+
+common:
+  pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+cluster:
+  user: 'ceph'
+  head: "10.103.11.243"
+  clients: ["10.103.11.243"]
+  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  mons:
+    10.103.11.243:
+      a: "10.103.11.243:6789"
+    10.103.11.244:
+      b: "10.103.11.244:6789"
+    10.103.11.245:
+      c: "10.103.11.245:6789"
+  
+  use_existing: True
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+  
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  
+  # Ceph 命令路径
+  rados_cmd: '/usr/bin/rados'
+  ceph_cmd: '/usr/bin/ceph'
+  
+  # 存储池配置（适合小容量 OSD）
+  pool_profiles:
+    rados_test:
+      pg_size: 16
+      pgp_size: 16
+      replication: 3
+
+benchmarks:
+  radosbench:
+    # 存储池配置
+    pool_profile: 'rados_test'
+    
+    # RADOS bench 参数
+    op_size: [4194304, 1048576, 4096]  # 4MB, 1MB, 4KB
+    time: 60                            # 测试时长（秒）
+    concurrent_ops: [16, 32, 64]        # 并发操作数
+    concurrent_procs: 1                 # 并发进程数
+    
+    # 测试模式
+    write_only: False                   # False 表示先写后读
+    
+    # 使用现有存储池
+    use_existing: True
+    
+    # 清理选项
+    cleanup: True                       # 测试后清理数据

@@ -63,6 +63,25 @@ class CephClientEndpoints(ClientEndpoints):
                                                         self.pool,
                                                         self.data_pool)
         common.pdsh(settings.getnodes('head'), fs_new_cmd, continue_if_error=False).communicate()
+        
+        # 设置 CephFS 配额（如果配置了）
+        cephfs_quota = settings.cluster.get('cephfs_quota', {})
+        if cephfs_quota:
+            max_bytes = cephfs_quota.get('max_bytes')
+            max_files = cephfs_quota.get('max_files')
+            
+            if max_bytes:
+                logger.info('设置 CephFS %s 最大字节数: %d bytes (%.2f GB)' % 
+                           (self.name, max_bytes, max_bytes / (1024.0**3)))
+                quota_cmd = 'sudo %s -c %s fs set %s max_bytes %d' % (
+                    self.ceph_cmd, self.tmp_conf, self.name, max_bytes)
+                common.pdsh(settings.getnodes('head'), quota_cmd, continue_if_error=True).communicate()
+            
+            if max_files:
+                logger.info('设置 CephFS %s 最大文件数: %d' % (self.name, max_files))
+                quota_cmd = 'sudo %s -c %s fs set %s max_files %d' % (
+                    self.ceph_cmd, self.tmp_conf, self.name, max_files)
+                common.pdsh(settings.getnodes('head'), quota_cmd, continue_if_error=True).communicate()
 
     def mount_fs(self):
         for ep_num in range(0, self.endpoints_per_client):

@@ -1,0 +1,57 @@
+# CBT CephFS Kernel 快速测试配置 - 使用现有文件系统
+# 关键: 不创建新文件系统，直接使用现有的 cephfs
+
+common:
+  pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+cluster:
+  user: 'ceph'
+  head: "10.103.11.243"
+  clients: ["10.103.11.243"]
+  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  mons:
+    10.103.11.243:
+      a: "10.103.11.243:6789"
+    10.103.11.244:
+      b: "10.103.11.244:6789"
+    10.103.11.245:
+      c: "10.103.11.245:6789"
+  
+  # MDS 配置
+  mdss: ["10.103.11.243"]
+  
+  # 使用现有集群和文件系统
+  use_existing: True
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+  
+  # CephFS 文件系统名称（必须匹配现有的）
+  fs: 'cephfs'
+
+# 客户端端点配置 - 简化版本，不指定池配置
+client_endpoints:
+  cephfs_test:
+    driver: 'cephfs-kernel'
+    endpoints_per_client: 1
+    endpoint_size: 262144            # 256 MB
+
+benchmarks:
+  fio:
+    client_endpoints: 'cephfs_test'
+    cmd_path: '/usr/bin/fio'
+    
+    # 测试参数
+    time: 30                         # 缩短到 30秒快速测试
+    time_based: True
+    size: 131072                     # 128 MB
+    norandommap: True
+    
+    # IO配置
+    mode: ['randwrite']
+    op_size: [4096]
+    procs_per_endpoint: [1]
+    iodepth: [4]
+    
+    log_avg_msec: 100

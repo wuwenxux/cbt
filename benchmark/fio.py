@@ -199,7 +199,8 @@ class Fio(Benchmark):
         cmd += ' --output-format=%s' % self.fio_out_format
 
         # End the fio_cmd
-        cmd += ' > %s' % (out_file)
+        # Use --output option instead of shell redirection to ensure proper permissions
+        cmd += ' --output=%s' % (out_file)
         return cmd
 
     def run(self):
@@ -260,23 +261,76 @@ class Fio(Benchmark):
 
     def analyze(self, out_dir):
         logger.info('Convert results to json format.')
+        import os
+        import glob
         for client in settings.getnodes('clients').split(','):
             host = settings.host_info(client)["host"]
             for i in range(self.endpoints_per_client):
                 found = 0
                 out_file = '%s/output.%d.%s' % (out_dir, i, host)
                 json_out_file = '%s/json_output.%d.%s' % (out_dir, i, host)
-                with open(out_file) as fd:
+                
+                # Check if file exists, try alternative names if not found
+                if not os.path.exists(out_file):
+                    # Try to find the file with different naming patterns
+                    candidates = [
+                        out_file,
+                        '%s/output.%d' % (out_dir, i),  # Without host suffix
+                        '%s/output.%d.%s' % (out_dir, i, client),  # With client name
+                    ]
+                    # Also try glob pattern to find any matching file
+                    glob_pattern = '%s/output.%d.*' % (out_dir, i)
+                    candidates.extend(glob.glob(glob_pattern))
+                    
+                    selected = next((p for p in candidates if os.path.exists(p) and os.path.getsize(p) > 0), None)
+                    if selected is None:
+                        logger.warning(
+                            "No local output.%d found under %s for host %s, attempting to retrieve from remote via scp",
+                            i, out_dir, host
+                        )
+                        # Derive the remote path deterministically
+                        iteration = int(self.config.get('iteration', 0))
+                        remote_run_dir = os.path.join(
+                            settings.cluster.get('tmp_dir', '/tmp/cbt'),
+                            '{:0>8}'.format(iteration),
+                            'Fio',
+                        )
+                        remote_file = os.path.join(remote_run_dir, 'output.%d' % i)
+                        try:
+                            import subprocess
+                            cmd = ['scp', '%s:%s' % (client, remote_file), out_file]
+                            subprocess.run(cmd, check=True, capture_output=True)
+                            selected = out_file
+                            logger.info("Successfully retrieved %s from %s", out_file, remote_file)
+                        except Exception as e:
+                            logger.error("Failed to retrieve %s from remote (%s): %s", out_file, remote_file, e)
+                            # Create empty result if file cannot be retrieved
+                            with open(json_out_file, 'w') as json_fd:
+                                json_fd.write('{}')
+                            continue
+                    elif selected != out_file:
+                        logger.info("Using output file %s for host %s proc %s", selected, host, i)
+                        out_file = selected
+                
+                # Process the file
+                try:
+                    with open(out_file) as fd:
+                        with open(json_out_file, 'w') as json_fd:
+                            for line in fd.readlines():
+                                if len(line.strip()) == 0:
+                                    found = 0
+                                    break
+                                if found == 1:
+                                    json_fd.write(line)
+                                if found == 0:
+                                    if "Starting" in line:
+                                        found = 1
+                except Exception as e:
+                    logger.error("Error processing file %s: %s", out_file, e)
+                    # Create empty result on error
                     with open(json_out_file, 'w') as json_fd:
-                        for line in fd.readlines():
-                            if len(line.strip()) == 0:
-                                found = 0
-                                break
-                            if found == 1:
-                                json_fd.write(line)
-                            if found == 0:
-                                if "Starting" in line:
-                                    found = 1
+                        json_fd.write('{}')
+                    continue
 
     def __str__(self):
         return "%s\n%s\n%s" % (self.run_dir, self.out_dir, super(Fio, self).__str__())

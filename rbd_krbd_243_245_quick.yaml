@@ -1,5 +1,6 @@
-# CBT RBD 快速测试配置
+# CBT RBD KRBD (Kernel RBD) 快速测试配置
 # Ceph 集群节点: 10.103.11.243, 244, 245
+# 访问方式: Kernel RBD Module (/dev/rbdX)
 
 common:
   pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
@@ -27,7 +28,6 @@ cluster:
   # Ceph 命令路径
   rbd_cmd: '/usr/bin/rbd'
   ceph_cmd: '/usr/bin/ceph'
-  rados_cmd: '/usr/bin/rados'
   
   # 存储池配置（适合小容量 OSD）
   pool_profiles:
@@ -37,13 +37,17 @@ cluster:
       replication: 3
 
 benchmarks:
-  librbdfio:
-    # FIO命令路径
+  rbdfio:
+    # FIO 命令路径
     cmd_path: '/usr/bin/fio'
     
     # 存储池配置
     pool_profile: 'rbd'
     poolname: 'rbd_test'
+    
+    # RBD 映射配置
+    # KRBD 会将 RBD image 映射为 /dev/rbdX 设备
+    rbd_map: True
     
     # 卷配置
     vol_size: 1024               # 卷大小（MB）= 1GB
@@ -56,11 +60,11 @@ benchmarks:
     time_based: True             # 基于时间运行
     ramp: 5                      # 预热时间（秒）
     
-    # IO配置 - 快速测试
+    # IO配置 - KRBD 测试
     mode: 'randwrite'            # 测试模式：随机写
-    iodepth: [4]                 # IO深度
+    iodepth: [4, 16]             # IO深度（KRBD 通常支持更高的队列深度）
     numjobs: [1]                 # 并发任务数
-    op_size: [4096]              # IO大小: 4K（字节）
+    op_size: [4096, 131072]      # IO大小: 4K, 128K（字节）
     
     # 进程配置
     procs_per_client: 1          # 每个客户端的进程数
