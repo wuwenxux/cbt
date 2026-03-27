@@ -476,7 +476,6 @@ class LibrbdFio(Benchmark):
 
     def analyze(self, out_dir):
         logger.info('Convert results to json format.')
-        self._ensure_local_fio_outputs(out_dir)
         self.parse(out_dir)
 
     def _get_iodepth_key(self, configuration_keys: List[str]) -> str:
