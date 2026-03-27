@@ -1,5 +1,5 @@
 # CBT RADOS Bench 快速测试配置
-# Ceph 集群节点: 10.103.11.243, 244, 245
+# Ceph 集群节点: 10.103.11.244, 245, 246
 # 访问方式: RADOS 直接访问 (最底层)
 
 common:
@@ -7,16 +7,16 @@ common:
 
 cluster:
   user: 'ceph'
-  head: "10.103.11.243"
+  head: "10.103.11.244"
   clients: ["10.103.11.249"]
-  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  osds: ["10.103.11.244", "10.103.11.245", "10.103.11.243"]
   mons:
-    10.103.11.243:
-      a: "10.103.11.243:6789"
     10.103.11.244:
-      b: "10.103.11.244:6789"
+      a: "10.103.11.244:6789"
     10.103.11.245:
-      c: "10.103.11.245:6789"
+      b: "10.103.11.245:6789"
+    10.103.11.243:
+      c: "10.103.11.243:6789"
   
   use_existing: True
   conf_file: '/etc/ceph/ceph.conf'
@@ -48,13 +48,15 @@ benchmarks:
     pool_profile: 'rados_test'
     
     # RADOS bench 参数
-    op_size: [4194304, 1048576, 4096]  # 4MB, 1MB, 4KB
+    # write 4K / seq(read) 4K / write 1M / seq(read) 1M
+    # radosbench 每次运行先写后读（write + seq），op_size 控制块大小
+    op_size: [4096, 1048576]            # 4K + 1M
     time: 60                            # 测试时长（秒）
-    concurrent_ops: [16, 32, 64]        # 并发操作数
-    concurrent_procs: 1                 # 并发进程数
+    concurrent_ops: [32]                # 并发操作数（统一 32）
+    concurrent_procs: 1
     
     # 测试模式
-    write_only: False                   # False 表示先写后读
+    write_only: False                   # False 表示先写后读（write + seq）
     
     # 使用现有存储池
     use_existing: True

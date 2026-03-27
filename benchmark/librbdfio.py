@@ -18,6 +18,8 @@ class LibrbdFio(Benchmark):
     """
     Class LibrbdFio
     """
+    # Mark class initialization so run loop executes all generated cases.
+    _class_initialized = False
 
     def __init__(self, archive_dir, cluster, config):
         super(LibrbdFio, self).__init__(archive_dir, cluster, config)
@@ -128,11 +130,24 @@ class LibrbdFio(Benchmark):
 
     def exists(self):
         """
-        Verify whether the out_dir exists
+        In CBT run loop, exists() == True means the case should run.
+        After class initialize() finished once, run every generated case.
+        Before initialization, only return True if an existing archive
+        already contains real fio output files.
         """
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
+        if LibrbdFio._class_initialized:
             return True
+
+        if os.path.exists(self.out_dir):
+            import glob
+            patterns = (
+                f'{self.out_dir}/output.0',
+                f'{self.out_dir}/output.0.*',
+                f'{self.out_dir}/output.0_*',
+            )
+            if any(glob.glob(pattern) for pattern in patterns):
+                logger.info('Skipping existing test in %s.', self.out_dir)
+                return True
         return False
 
 
@@ -156,6 +171,8 @@ class LibrbdFio(Benchmark):
         self.mkimages()
         logger.info('Attempting to prefill fio images...')
         self.prefill()
+        # initialize() completed; run loop should execute all class cases.
+        LibrbdFio._class_initialized = True
 
 
     def run_workloads(self):
@@ -408,8 +425,16 @@ class LibrbdFio(Benchmark):
             host = settings.host_info(client)["host"]
             for i in range(self.volumes_per_client):
                 found = 0
-                out_file = f'{out_dir}/output.{i:d}.{host}'
+                # Prefer host-suffixed output, but support plain output.N files.
+                # Some environments write output files without host suffix.
+                host_out_file = f'{out_dir}/output.{i:d}.{host}'
+                plain_out_file = f'{out_dir}/output.{i:d}'
+                out_file = host_out_file if os.path.exists(host_out_file) else plain_out_file
                 json_out_file = f'{out_dir}/json_output.{i:d}.{host}'
+                if not os.path.exists(out_file):
+                    raise FileNotFoundError(
+                        f"fio output not found, tried: {host_out_file} and {plain_out_file}"
+                    )
                 with open(out_file) as fd:
                     with open(json_out_file, 'w') as json_fd:
                         for line in fd.readlines():
@@ -422,9 +447,36 @@ class LibrbdFio(Benchmark):
                                 if "Starting" in line:
                                     found = 1
 
+    def _ensure_local_fio_outputs(self, out_dir):
+        """
+        Ensure fio output files exist locally before analyze().
+        rpdcp may occasionally miss output.N files; fallback to direct scp
+        from client run_dir.
+        """
+        for client in settings.getnodes('clients').split(','):
+            host = settings.host_info(client)["host"]
+            for i in range(self.volumes_per_client):
+                host_out_file = f'{out_dir}/output.{i:d}.{host}'
+                plain_out_file = f'{out_dir}/output.{i:d}'
+                if os.path.exists(host_out_file) or os.path.exists(plain_out_file):
+                    continue
+
+                remote_candidates = (
+                    f'{self.run_dir}/output.{i:d}',
+                    f'{self.run_dir}/output.{i:d}.{host}',
+                )
+                for remote_out_file in remote_candidates:
+                    try:
+                        common.rscp(client, remote_out_file, host_out_file).communicate()
+                        logger.info('Recovered fio output via scp: %s', host_out_file)
+                        break
+                    except Exception:
+                        continue
+
 
     def analyze(self, out_dir):
         logger.info('Convert results to json format.')
+        self._ensure_local_fio_outputs(out_dir)
         self.parse(out_dir)
 
     def _get_iodepth_key(self, configuration_keys: List[str]) -> str:

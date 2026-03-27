@@ -11,6 +11,8 @@ logger = logging.getLogger("cbt")
 
 
 class RbdFio(Benchmark):
+    # 类变量：init 阶段完成后置 True，使 run loop 能跑所有 case
+    _class_initialized = False
 
     def __init__(self, archive_dir, cluster, config):
         super(RbdFio, self).__init__(archive_dir, cluster, config)
@@ -50,9 +52,15 @@ class RbdFio(Benchmark):
             self.names += '--name=%s/cbt-kernelrbdfio-`hostname -s`/cbt-kernelrbdfio-%d ' % (self.cluster.mnt_dir, i)
 
     def exists(self):
-        if os.path.exists(self.out_dir):
-            logger.info('Skipping existing test in %s.', self.out_dir)
+        # init 阶段完成后，所有 case 都准备好运行（run loop 用 exists()=True 作为执行条件）
+        if RbdFio._class_initialized:
             return True
+        # 未 init 过：检查 archive 中是否有实际 fio 输出（重复运行同一 archive 时）
+        if os.path.exists(self.out_dir):
+            import glob
+            if glob.glob('%s/output.0.*' % self.out_dir):
+                logger.info('Skipping existing test in %s.', self.out_dir)
+                return True
         return False
 
     def initialize(self):
@@ -64,6 +72,8 @@ class RbdFio(Benchmark):
         monitoring.stop()
 
         common.sync_files('%s/*' % self.run_dir, self.out_dir)
+        # init 完成，标记所有 case 可以进入 run loop
+        RbdFio._class_initialized = True
 
         self.mkimages()
 

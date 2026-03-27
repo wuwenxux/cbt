@@ -1,57 +1,98 @@
-# CBT CephFS Kernel 快速测试配置 - 使用现有文件系统
-# 关键: 不创建新文件系统，直接使用现有的 cephfs
+# CBT CephFS Kernel 快速测试配置
+#
+# 测试拓扑:
+#   客户端 (10.103.11.249) --[CephFS kernel mount]--> MDS (10.103.11.244) --> OSD x3
+#
+# 测试对象:
+#   Ceph 文件系统（内核客户端），挂载点由 CBT 自动管理，通过 fio 发起 IO 负载
+#
+# 测试用例（共 2 个，按顺序执行）:
+#   Case 1  randwrite  4K  iodepth=4   - 随机写（延迟敏感场景）
+#   Case 2  randread   4K  iodepth=4   - 随机读（读缓存命中率测试）
+#
+# 测试时长: 每个 case 60 秒 + 5 秒预热，共约 2~3 分钟
+#
+# 指令数统计: perf stat 采集 cycles / instructions / cache-references /
+#              cache-misses / branch-instructions / branch-misses
+#              统计范围: 客户端节点（10.103.11.249）全系统采样
+#
+# 关键指标:
+#   - IOPS（每秒 IO 操作数）
+#   - BW（带宽 MB/s）
+#   - Latency（平均 / P95 / P99 延迟 ms）
+#   - cycles / instructions（perf_stat 文件）
 
 common:
   pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 cluster:
   user: 'ceph'
-  head: "10.103.11.243"
+  head: "10.103.11.244"
   clients: ["10.103.11.249"]
-  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  osds: ["10.103.11.244", "10.103.11.245", "10.103.11.243"]
   mons:
-    10.103.11.243:
-      a: "10.103.11.243:6789"
     10.103.11.244:
-      b: "10.103.11.244:6789"
+      a: "10.103.11.244:6789"
     10.103.11.245:
-      c: "10.103.11.245:6789"
-  
-  # MDS 配置
+      b: "10.103.11.245:6789"
+    10.103.11.243:
+      c: "10.103.11.243:6789"
+
+  # MDS 节点
   mdss: ["10.103.11.243"]
-  
-  # 使用现有集群和文件系统
+
   use_existing: True
   conf_file: '/etc/ceph/ceph.conf'
   tmp_dir: "/tmp/cbt"
   iterations: 1
   ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-  
-  # CephFS 文件系统名称（必须匹配现有的）
-  fs: 'cephfs'
 
-# 客户端端点配置 - 简化版本，不指定池配置
+  fs: 'cephfs'
+  mount_cmd: '/usr/sbin/mount.ceph'
+
+# 性能监控配置 - 采集客户端 CPU cycles & instructions
+# nodes: ['clients'] 在客户端节点采集
+# -a 全系统采样，不绑定具体进程
+# 前置条件：客户端需预先创建标记文件：
+#   ssh ceph@10.103.11.249 "echo 1 | sudo tee /run/cbt_perf_marker.pid"
+monitoring_profiles:
+  perf:
+    nodes: ['clients']
+    pid_dir: '/run'
+    pid_glob: 'cbt_perf_marker.pid'
+    args: 'stat -e cycles,instructions,cache-references,cache-misses,branch-instructions,branch-misses -a -o {perf_dir}/perf_stat.$$ sleep 999999'
+
+# CephFS 客户端端点
 client_endpoints:
   cephfs_test:
     driver: 'cephfs-kernel'
     endpoints_per_client: 1
-    endpoint_size: 262144            # 256 MB
+    endpoint_size: 262144       # 挂载目录可用空间上限 256 MB
 
 benchmarks:
   fio:
     client_endpoints: 'cephfs_test'
     cmd_path: '/usr/bin/fio'
-    
-    # 测试参数
-    time: 30                         # 缩短到 30秒快速测试
+
+    # ── 测试时长 ─────────────────────────────
+    time: 60                    # 每个 case 运行时长（秒）
     time_based: True
-    size: 131072                     # 128 MB
+    ramp: 5                     # 预热时间（秒），不计入结果
+
+    # ── 测试对象 ─────────────────────────────
+    size: 512                   # 单文件大小 512 MB（CBT 单位: MB）
     norandommap: True
-    
-    # IO配置
-    mode: ['randwrite']
-    op_size: [4096]
-    procs_per_endpoint: [1]
+
+    # ── 测试用例 ─────────────────────────────
+    # randwrite 4K / randread 4K / write(seq) 1M / read(seq) 1M
+    mode: ['randwrite', 'randread', 'write', 'read']
+    op_size: [4096, 1048576]    # 4K + 1M
     iodepth: [4]
-    
-    log_avg_msec: 100
+    procs_per_endpoint: [1]
+
+    # ── 输出配置 ─────────────────────────────
+    fio_out_format: 'json,normal'
+    log_avg_msec: 100           # 每 100ms 记录一次 IOPS/BW/Latency
+    log_iops: True
+    log_bw: True
+    log_lat: True

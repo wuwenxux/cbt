@@ -1,0 +1,113 @@
+# CBT RGW S3 hsbench 快速测试配置
+#
+# 测试拓扑:
+#   客户端 (10.103.11.249) --[S3 HTTP]--> RGW (10.103.11.243:7480) --> OSD x3
+#
+# 测试对象:
+#   Ceph RGW 对象存储，S3 协议，通过 hsbench 发起负载
+#
+# 测试用例:
+#   阶段 c  - 创建 bucket（4 个）
+#   阶段 x  - PUT 写入（每线程持续 60 秒，并发 16 线程，对象大小 4K）
+#   阶段 i  - LIST 列举（遍历 bucket 内对象）
+#   阶段 p  - GET 读取（每线程持续 60 秒，并发 16 线程，对象大小 4K）
+#
+# 测试时间: 约 4~5 分钟（4 个阶段各 60 秒 + 准备时间）
+#
+# 关键指标:
+#   - PUT IOPS / 吞吐 (MB/s)
+#   - GET IOPS / 吞吐 (MB/s)
+#   - 平均延迟 (ms)
+#   - 每 10 秒实时上报一次
+
+common:
+  pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+cluster:
+  user: 'ceph'
+  head: "10.103.11.244"
+  clients: ["10.103.11.249"]
+  osds: ["10.103.11.244", "10.103.11.245", "10.103.11.243"]
+  mons:
+    10.103.11.244:
+      a: "10.103.11.244:6789"
+    10.103.11.245:
+      b: "10.103.11.245:6789"
+    10.103.11.243:
+      c: "10.103.11.243:6789"
+
+  # RGW 节点：10.103.11.243，端口 7480
+  rgws:
+    10.103.11.243:
+      client.radosgw.gateway:
+        host: "10.103.11.243"
+        port: 7480
+
+  use_existing: True
+  conf_file: '/etc/ceph/ceph.conf'
+  tmp_dir: "/tmp/cbt"
+  iterations: 1
+
+  ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+  ceph_cmd: '/usr/bin/ceph'
+  rados_cmd: '/usr/bin/rados'
+  radosgw-admin_cmd: '/usr/bin/radosgw-admin'
+
+  pool_profiles:
+    rgw:
+      pg_size: 16
+      pgp_size: 16
+      replication: 3
+
+# 性能监控配置 - 采集客户端 CPU cycles & instructions
+# nodes: ['clients'] 在客户端节点采集
+# -a 全系统采样，不绑定具体进程
+# 前置条件：客户端需预先创建标记文件：
+#   ssh ceph@10.103.11.249 "echo 1 | sudo tee /run/cbt_perf_marker.pid"
+monitoring_profiles:
+  perf:
+    nodes: ['clients']
+    pid_dir: '/run'
+    pid_glob: 'cbt_perf_marker.pid'
+    args: 'stat -e cycles,instructions,cache-references,cache-misses,branch-instructions,branch-misses -a -o {perf_dir}/perf_stat.$$ sleep 999999'
+
+# S3 客户端端点
+# CBT 会自动调用 radosgw-admin user create 创建以下用户
+client_endpoints:
+  rgw_s3:
+    driver: 's3'
+    endpoints_per_client: 1
+    user: 'cbt'
+    access_key: 'cbtaccesskey0001'
+    secret_key: 'cbtsecretkey00000000000000000001'
+    urls:
+      - "http://10.103.11.243:7480"
+
+benchmarks:
+  hsbench:
+    cmd_path: '/usr/local/bin/hsbench'
+    client_endpoints: 'rgw_s3'
+
+    # ── 测试对象 ──────────────────────────────
+    # S3 不区分随机/顺序，用 PUT(write) + GET(read) 覆盖 4 个标准场景等价：
+    #   PUT 4K  ≈ randwrite 4K（小对象写吞吐）
+    #   GET 4K  ≈ randread  4K（小对象读吞吐）
+    #   PUT 1M  ≈ seqwrite  1M（大对象写吞吐）
+    #   GET 1M  ≈ seqread   1M（大对象读吞吐）
+    # 注：hsbench size 不支持列表，4K 和 1M 通过菜单 8（4K）和菜单 9（1M）分别运行
+    buckets: 4
+    objects: 1000
+    size: '1M'          # 对象大小；1M 测试请使用 rgw_s3_1m_hsbench_quick.yaml
+
+    # c = 创建 bucket, x = PUT 写入, i = LIST 列举, p = GET 读取
+    modes: 'cxip'
+
+    # ── 测试时长 ─────────────────────────────
+    duration: 60
+
+    # ── 并发配置 ─────────────────────────────
+    threads: 16
+
+    # ── 上报间隔 ─────────────────────────────
+    report_intervals: 10

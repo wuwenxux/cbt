@@ -7,20 +7,23 @@ common:
 
 cluster:
   user: 'ceph'
-  head: "10.103.11.243"
+  head: "10.103.11.244"
   clients: ["10.103.11.249"]
-  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  osds: ["10.103.11.244", "10.103.11.245", "10.103.11.243"]
   mons:
-    10.103.11.243:
-      a: "10.103.11.243:6789"
     10.103.11.244:
-      b: "10.103.11.244:6789"
+      a: "10.103.11.244:6789"
     10.103.11.245:
-      c: "10.103.11.245:6789"
+      b: "10.103.11.245:6789"
+    10.103.11.243:
+      c: "10.103.11.243:6789"
   
   use_existing: True
   conf_file: '/etc/ceph/ceph.conf'
   tmp_dir: "/tmp/cbt"
+  # pid_dir 指向客户端标记文件所在目录，供 perf 监控使用
+  # 需预先在客户端执行: echo 1 | sudo tee /run/cbt_perf_marker.pid
+  pid_dir: "/run"
   iterations: 1
   
   ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
@@ -32,14 +35,20 @@ cluster:
   # 存储池配置（适合小容量 OSD）
   pool_profiles:
     rbd:
-      pg_size: 16
-      pgp_size: 16
+      pg_size: 4
+      pgp_size: 4
       replication: 3
 
-# 性能监控配置 - 收集 CPU cycles & instructions
+# 性能监控配置 - 收集客户端 CPU cycles & instructions
+# nodes: ['clients'] 在客户端节点采集
+# -a 全系统采样，不绑定具体进程
+# 前置条件：客户端需预先创建标记文件：
+#   ssh ceph@10.103.11.249 "echo 1 | sudo tee /run/cbt_perf_marker.pid"
 monitoring_profiles:
   perf:
     nodes: ['clients']
+    pid_dir: '/run'
+    pid_glob: 'cbt_perf_marker.pid'
     args: 'stat -e cycles,instructions,cache-references,cache-misses,branch-instructions,branch-misses -a -o {perf_dir}/perf_stat.$$ sleep 999999'
 
 benchmarks:
@@ -49,7 +58,7 @@ benchmarks:
     
     # 存储池配置
     pool_profile: 'rbd'
-    poolname: 'rbd_test_pool'
+    poolname: 'krbd_test_pool'
     
     # RBD 映射配置
     # KRBD 会将 RBD image 映射为 /dev/rbdX 设备
@@ -66,11 +75,12 @@ benchmarks:
     time_based: True             # 基于时间运行
     ramp: 5                      # 预热时间（秒）
     
-    # IO配置 - KRBD 测试
-    mode: 'randwrite'            # 测试模式：随机写
-    iodepth: [4, 16]             # IO深度（KRBD 通常支持更高的队列深度）
-    numjobs: [1]                 # 并发任务数
-    op_size: [4096, 131072]      # IO大小: 4K, 128K（字节）
+    # IO配置 - 4 标准测试场景
+    # randwrite 4K / randread 4K / write(seq) 1M / read(seq) 1M
+    mode: ['randwrite', 'randread', 'write', 'read']
+    iodepth: [32]
+    numjobs: [1]
+    op_size: [4096, 1048576]     # 4K + 1M
     
     # 进程配置
     procs_per_client: 1          # 每个客户端的进程数

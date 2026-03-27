@@ -1,5 +1,5 @@
 # CBT RBD NBD 快速测试配置
-# Ceph 集群节点: 10.103.11.243, 244, 245
+# Ceph 集群节点: 10.103.11.244, 245, 246
 # 访问方式: Network Block Device (rbd-nbd)
 
 common:
@@ -7,16 +7,16 @@ common:
 
 cluster:
   user: 'ceph'
-  head: "10.103.11.243"
+  head: "10.103.11.244"
   clients: ["10.103.11.249"]
-  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  osds: ["10.103.11.244", "10.103.11.245", "10.103.11.243"]
   mons:
-    10.103.11.243:
-      a: "10.103.11.243:6789"
     10.103.11.244:
-      b: "10.103.11.244:6789"
+      a: "10.103.11.244:6789"
     10.103.11.245:
-      c: "10.103.11.245:6789"
+      b: "10.103.11.245:6789"
+    10.103.11.243:
+      c: "10.103.11.243:6789"
   
   use_existing: True
   conf_file: '/etc/ceph/ceph.conf'
@@ -48,7 +48,7 @@ client_endpoints:
   rbd_nbd_test:
     driver: 'rbd-nbd'              # 使用 rbd-nbd 驱动
     endpoints_per_client: 1        # 每个客户端1个端点
-    endpoint_size: 1048576         # 端点大小（KB）= 1 GB
+    endpoint_size: 4096            # 端点大小（MB）= 4 GB；同时作为 fio.py 的 KB 校验上限
     pool_profile: 'rbd'            # 使用上面定义的存储池配置
 
 benchmarks:
@@ -63,12 +63,13 @@ benchmarks:
     time_based: True
     ramp: 5
     
-    # IO配置 - 快速测试
-    mode: ['randwrite']
-    op_size: [4096]                # 4K
+    # IO配置 - 4 标准测试场景
+    # randwrite 4K / randread 4K / write(seq) 1M / read(seq) 1M
+    mode: ['randwrite', 'randread', 'write', 'read']
+    op_size: [4096, 1048576]       # 4K + 1M
     iodepth: [32]
     procs_per_endpoint: [1]
-    numjobs: [4]
+    numjobs: [1]
     
     # 输出配置
     fio_out_format: 'json,normal'

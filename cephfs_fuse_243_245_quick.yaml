@@ -1,85 +1,71 @@
 # CBT CephFS FUSE 快速测试配置
-# Ceph 集群节点: 10.103.11.243, 244, 245
-# 访问方式: FUSE (ceph-fuse)
+#
+# 测试拓扑:
+#   客户端 (10.103.11.249) --[ceph-fuse]--> MDS (10.103.11.243) --> OSD x3
+#
+# 测试用例（共 2 个）:
+#   Case 1  randwrite  4K  iodepth=4   - 随机写
+#   Case 2  randread   4K  iodepth=4   - 随机读
 
 common:
   pdsh_ssh_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 cluster:
   user: 'ceph'
-  head: "10.103.11.243"
+  head: "10.103.11.244"
   clients: ["10.103.11.249"]
-  osds: ["10.103.11.243", "10.103.11.244", "10.103.11.245"]
+  osds: ["10.103.11.244", "10.103.11.245", "10.103.11.243"]
   mons:
-    10.103.11.243:
-      a: "10.103.11.243:6789"
     10.103.11.244:
-      b: "10.103.11.244:6789"
+      a: "10.103.11.244:6789"
     10.103.11.245:
-      c: "10.103.11.245:6789"
-  
-  # MDS 配置
+      b: "10.103.11.245:6789"
+    10.103.11.243:
+      c: "10.103.11.243:6789"
+
   mdss: ["10.103.11.243"]
-  
+
   use_existing: True
   conf_file: '/etc/ceph/ceph.conf'
   tmp_dir: "/tmp/cbt"
   iterations: 1
-  
   ssh_options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-  
-  # CephFS 配置
-  fs: 'cephfs'
-  
-  # FUSE 特定配置
-  ceph_fuse_cmd: '/usr/bin/ceph-fuse'
-  
-  # 存储池配置（极小 PG 数量以适应已有池）
-  pool_profiles:
-    cephfs_repl:
-      pg_size: 8
-      pgp_size: 8
-      replication: 3
-  
-  # CephFS 存储池映射
-  cephfs_pools:
-    cephfs_data: cephfs_repl
-    cephfs_metadata: cephfs_repl
 
-# 性能监控配置 - 收集 CPU cycles & instructions
+  fs: 'cephfs'
+
 monitoring_profiles:
   perf:
     nodes: ['clients']
+    pid_dir: '/run'
+    pid_glob: 'cbt_perf_marker.pid'
     args: 'stat -e cycles,instructions,cache-references,cache-misses,branch-instructions,branch-misses -a -o {perf_dir}/perf_stat.$$ sleep 999999'
 
-# 客户端端点配置
 client_endpoints:
-  cephfs_fuse_test:
-    driver: 'cephfs-fuse'        # 使用 FUSE 驱动
-    endpoints_per_client: 1      # 每个客户端1个端点
-    endpoint_size: 524288        # 端点大小（KB）= 512 MB
-    pool_profile: 'cephfs_repl'  # 使用上面定义的存储池配置
+  cephfs_test:
+    driver: 'cephfs-fuse'
+    endpoints_per_client: 1
+    endpoint_size: 262144
 
 benchmarks:
   fio:
-    # 引用客户端端点配置
-    client_endpoints: 'cephfs_fuse_test'
-    
+    client_endpoints: 'cephfs_test'
     cmd_path: '/usr/bin/fio'
-    
-    # 测试时长
+
     time: 60
-    time_based: False            # 使用大小限制而非时间限制
-    
-    # 文件大小（限制不超过 10GB）
-    size: 10485760               # 文件大小（KB）= 10 GB
+    time_based: True
+    ramp: 5
+
+    size: 512                   # 512 MB（CBT 单位: MB）
     norandommap: True
-    
-    # IO配置 - 简化测试
-    mode: ['randwrite']
-    op_size: [4096]              # 4K
+
+    # randwrite 4K / randread 4K / write(seq) 1M / read(seq) 1M
+    mode: ['randwrite', 'randread', 'write', 'read']
+    op_size: [4096, 1048576]    # 4K + 1M
+    iodepth: [4]
     procs_per_endpoint: [1]
-    iodepth: [4]                 # FUSE 通常不需要很高的队列深度
-    
-    # 输出配置
+
+    fio_out_format: 'json,normal'
     log_avg_msec: 100
+    log_iops: True
+    log_bw: True
+    log_lat: True
